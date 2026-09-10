@@ -83,6 +83,7 @@ class HealthSummary:
     pending_sectors: Optional[int]
     percentage_used: Optional[int]  # NVMe wear indicator
     media_errors: Optional[int]  # NVMe
+    critical_warning: Optional[int]  # NVMe critical_warning bitmask, raw value
     warnings: list = field(default_factory=list)
 
 
@@ -238,6 +239,40 @@ def _get(d: dict, *path, default=None):
     return cur
 
 
+# NVMe Base Spec "Critical Warning" byte (SMART/Health Information Log,
+# byte 0): each bit flags an independent, spec-defined failure condition.
+# smartctl's -j output surfaces this as a small integer bitmask under
+# nvme_smart_health_information_log.critical_warning.
+_NVME_CRITICAL_WARNING_BITS = {
+    0: "NVMe available spare capacity has fallen below its threshold",
+    1: "NVMe temperature is above/below a critical threshold",
+    2: "NVMe subsystem reliability is degraded (excessive media/internal errors)",
+    3: "NVMe media has been placed in read-only mode",
+    4: "NVMe volatile memory backup device has failed",
+    5: "NVMe namespace(s) may be inconsistent with previously reported capacity",
+}
+
+
+def _decode_nvme_critical_warning(bitmask: int) -> list:
+    """Decode the NVMe critical_warning bitmask into human-readable warnings.
+
+    Any bit this table doesn't recognize is still surfaced generically
+    rather than silently dropped, since an unrecognized-but-nonzero value
+    still means the drive is reporting *something* critical."""
+    warnings = []
+    for bit, message in _NVME_CRITICAL_WARNING_BITS.items():
+        if bitmask & (1 << bit):
+            warnings.append(message)
+    known_mask = sum(1 << bit for bit in _NVME_CRITICAL_WARNING_BITS)
+    unknown_bits = bitmask & ~known_mask
+    if unknown_bits:
+        warnings.append(
+            f"NVMe critical_warning has unrecognized bit(s) set (0x{unknown_bits:x}) "
+            f"-- check `smartctl -a` output directly"
+        )
+    return warnings
+
+
 def summarize(device: str, probe: ProbeResult) -> HealthSummary:
     if not probe.ok or probe.raw_json is None:
         raise ValueError("Cannot summarize a failed probe")
@@ -267,6 +302,7 @@ def summarize(device: str, probe: ProbeResult) -> HealthSummary:
 
     percentage_used = _get(data, "nvme_smart_health_information_log", "percentage_used")
     media_errors = _get(data, "nvme_smart_health_information_log", "media_errors")
+    critical_warning = _get(data, "nvme_smart_health_information_log", "critical_warning")
 
     if reallocated and reallocated > 0:
         warnings.append(f"{reallocated} reallocated sector(s) — drive has remapped bad blocks")
@@ -276,6 +312,8 @@ def summarize(device: str, probe: ProbeResult) -> HealthSummary:
         warnings.append(f"NVMe wear at {percentage_used}% of rated life")
     if media_errors and media_errors > 0:
         warnings.append(f"{media_errors} NVMe media error(s) logged")
+    if critical_warning:
+        warnings.extend(_decode_nvme_critical_warning(critical_warning))
     if smart_status is False:
         warnings.append("Overall SMART self-assessment: FAILED — back up this drive now")
 
@@ -295,5 +333,6 @@ def summarize(device: str, probe: ProbeResult) -> HealthSummary:
         pending_sectors=pending,
         percentage_used=percentage_used,
         media_errors=media_errors,
+        critical_warning=critical_warning,
         warnings=warnings,
     )

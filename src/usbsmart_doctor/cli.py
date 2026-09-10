@@ -45,6 +45,8 @@ def _print_human(device: str, probe: ProbeResult, summary: HealthSummary | None)
         print(f"NVMe wear used:      {summary.percentage_used}%")
     if summary.media_errors is not None:
         print(f"NVMe media errors:   {summary.media_errors}")
+    if summary.critical_warning is not None and summary.critical_warning != 0:
+        print(f"NVMe critical_warning: 0x{summary.critical_warning:x}")
     if summary.warnings:
         print()
         print("Warnings:")

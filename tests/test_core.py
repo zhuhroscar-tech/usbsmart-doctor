@@ -7,6 +7,7 @@ import pytest
 from usbsmart_doctor.core import (
     CANDIDATE_TYPES,
     ProbeResult,
+    _decode_nvme_critical_warning,
     _json_has_smart_data,
     load_cache,
     probe_device_type,
@@ -157,3 +158,48 @@ def test_summarize_requires_successful_probe():
 
 def test_candidate_types_starts_with_auto():
     assert CANDIDATE_TYPES[0] == "auto"
+
+
+def test_decode_nvme_critical_warning_single_bit():
+    warnings = _decode_nvme_critical_warning(0b001)
+    assert len(warnings) == 1
+    assert "available spare capacity" in warnings[0]
+
+
+def test_decode_nvme_critical_warning_multiple_bits():
+    # bit 0 (spare capacity) + bit 2 (reliability degraded)
+    warnings = _decode_nvme_critical_warning(0b101)
+    assert len(warnings) == 2
+    assert any("available spare capacity" in w for w in warnings)
+    assert any("reliability is degraded" in w for w in warnings)
+
+
+def test_decode_nvme_critical_warning_zero_is_empty():
+    assert _decode_nvme_critical_warning(0) == []
+
+
+def test_decode_nvme_critical_warning_unrecognized_bit_still_surfaced():
+    # bit 6 is outside the documented 0-5 range but still nonzero
+    warnings = _decode_nvme_critical_warning(1 << 6)
+    assert len(warnings) == 1
+    assert "unrecognized bit" in warnings[0]
+
+
+def test_summarize_flags_nvme_critical_warning():
+    data = dict(SAMPLE_SAT_JSON)
+    data["nvme_smart_health_information_log"] = {
+        "percentage_used": 10,
+        "media_errors": 0,
+        "critical_warning": 0b001,
+    }
+    probe = ProbeResult(device_type="auto", tried=["auto"], raw_json=data)
+    summary = summarize("/dev/nvme0", probe)
+    assert any("available spare capacity" in w for w in summary.warnings)
+
+
+def test_summarize_no_critical_warning_key_is_silent():
+    # Older smartctl/older drives may omit critical_warning entirely --
+    # must not raise or fabricate a warning for a key that isn't there.
+    probe = ProbeResult(device_type="sat", tried=["auto", "sat"], raw_json=SAMPLE_SAT_JSON)
+    summary = summarize("/dev/sdz", probe)
+    assert summary.warnings == []
