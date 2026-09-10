@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "usbsmart-doctor"
+version = "0.1.0"
+description = "Finds the smartctl device type your USB drive's bridge chip needs and prints a clean SMART health report"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "zhuhroscar-tech" }]
+requires-python = ">=3.9"
+classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: System :: Hardware",
+]
+
+[project.urls]
+Homepage = "https://github.com/zhuhroscar-tech/usbsmart-doctor"
+
+[project.scripts]
+usbsmart-doctor = "usbsmart_doctor.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

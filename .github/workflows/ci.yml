@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install smartmontools (real Linux smartctl binary)
+        run: sudo apt-get update && sudo apt-get install -y smartmontools
+      - name: Install package + test deps
+        run: python -m pip install -e ".[dev]" || python -m pip install -e . pytest
+      - name: Run tests
+        run: python -m pytest -v
+      - name: Smoke-test installed console script
+        run: |
+          usbsmart-doctor --version
+          usbsmart-doctor --help
+      - name: Verify real smartctl binary is usable (sanity, no real drive needed)
+        run: smartctl --version
+
+  build-artifact:
+    name: build wheel + sdist + pyz
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel and sdist
+        run: |
+          python -m pip install build
+          python -m build
+      - name: Build standalone .pyz (zipapp)
+        run: |
+          python -m pip install --target build/pyz-deps .
+          python -m zipapp build/pyz-deps -m "usbsmart_doctor.cli:main" -o dist/usbsmart-doctor.pyz -p "/usr/bin/env python3"
+      - name: Smoke-test the .pyz on this Linux runner
+        run: |
+          python3 dist/usbsmart-doctor.pyz --version
+          python3 dist/usbsmart-doctor.pyz --help
+      - name: Compute checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
