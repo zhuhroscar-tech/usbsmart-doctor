@@ -21,7 +21,7 @@ jobs:
       - name: Install smartmontools (real Linux smartctl binary)
         run: sudo apt-get update && sudo apt-get install -y smartmontools
       - name: Install package + test deps
-        run: python -m pip install -e ".[dev]" || python -m pip install -e . pytest
+        run: python -m pip install -e . pytest
       - name: Run tests
         run: python -m pytest -v
       - name: Smoke-test installed console script
