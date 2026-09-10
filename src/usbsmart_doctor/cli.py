@@ -15,46 +15,57 @@ from .core import (
     probe_device_type,
     summarize,
 )
+from .style import bool_badge, print_fields, resolve_style, status_headline
 
 
-def _print_human(device: str, probe: ProbeResult, summary: HealthSummary | None) -> None:
-    print(f"Device:        {device}")
+def _print_human(device: str, probe: ProbeResult, summary: HealthSummary | None, style) -> None:
+    print(f"Device:        {style.bold(device)}")
     print(f"Working -d:    smartctl -d {probe.device_type} -a {device}")
-    print(f"Types tried:   {', '.join(probe.tried)}")
+    print(f"Types tried:   {style.dim(', '.join(probe.tried))}")
     if summary is None:
         return
-    print()
-    print(f"Model:         {summary.model or 'unknown'}")
-    print(f"Serial:        {summary.serial or 'unknown'}")
-    print(f"Protocol:      {summary.protocol or 'unknown'}")
-    print(f"SMART support: available={summary.smart_supported} enabled={summary.smart_enabled}")
+
     status = summary.overall_health_passed
-    status_str = "PASSED" if status else ("FAILED" if status is False else "unknown")
-    print(f"Overall health:{' ' * 1}{status_str}")
-    if summary.temperature_celsius is not None:
-        print(f"Temperature:   {summary.temperature_celsius}C")
-    if summary.power_on_hours is not None:
-        print(f"Power-on time: {summary.power_on_hours} hours")
-    if summary.power_cycle_count is not None:
-        print(f"Power cycles:  {summary.power_cycle_count}")
-    if summary.reallocated_sectors is not None:
-        print(f"Reallocated sectors: {summary.reallocated_sectors}")
-    if summary.pending_sectors is not None:
-        print(f"Pending sectors:     {summary.pending_sectors}")
-    if summary.percentage_used is not None:
-        print(f"NVMe wear used:      {summary.percentage_used}%")
-    if summary.media_errors is not None:
-        print(f"NVMe media errors:   {summary.media_errors}")
-    if summary.critical_warning is not None and summary.critical_warning != 0:
-        print(f"NVMe critical_warning: 0x{summary.critical_warning:x}")
-    if summary.warnings:
-        print()
-        print("Warnings:")
-        for w in summary.warnings:
-            print(f"  - {w}")
+    print()
+    if status is True:
+        print(status_headline(style, "ok", "Overall health: PASSED"))
+    elif status is False:
+        print(status_headline(style, "fail", "Overall health: FAILED -- back up this drive now"))
     else:
-        print()
-        print("No warnings detected in the metrics this tool checks.")
+        print(status_headline(style, "info", "Overall health: unknown"))
+
+    rows = [
+        ("Model", summary.model or style.dim("unknown")),
+        ("Serial", summary.serial or style.dim("unknown")),
+        ("Protocol", summary.protocol or style.dim("unknown")),
+        ("SMART supported", bool_badge(style, summary.smart_supported)),
+        ("SMART enabled", bool_badge(style, summary.smart_enabled)),
+    ]
+    if summary.temperature_celsius is not None:
+        rows.append(("Temperature", f"{summary.temperature_celsius}\u00b0C"))
+    if summary.power_on_hours is not None:
+        rows.append(("Power-on time", f"{summary.power_on_hours} hours"))
+    if summary.power_cycle_count is not None:
+        rows.append(("Power cycles", str(summary.power_cycle_count)))
+    if summary.reallocated_sectors is not None:
+        rows.append(("Reallocated sectors", str(summary.reallocated_sectors)))
+    if summary.pending_sectors is not None:
+        rows.append(("Pending sectors", str(summary.pending_sectors)))
+    if summary.percentage_used is not None:
+        rows.append(("NVMe wear used", f"{summary.percentage_used}%"))
+    if summary.media_errors is not None:
+        rows.append(("NVMe media errors", str(summary.media_errors)))
+    if summary.critical_warning is not None and summary.critical_warning != 0:
+        rows.append(("NVMe critical_warning", style.bold_red(f"0x{summary.critical_warning:x}")))
+    print()
+    print_fields(rows)
+
+    print()
+    if summary.warnings:
+        for w in summary.warnings:
+            print(status_headline(style, "warn", w))
+    else:
+        print(status_headline(style, "ok", "No warnings detected in the metrics this tool checks."))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -81,6 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Skip probing and use this smartctl -d TYPE directly",
     )
+    p.add_argument("--no-color", action="store_true", help="Disable colored output.")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return p
 
@@ -121,7 +133,8 @@ def main(argv: list | None = None) -> int:
             out["summary"] = asdict(summary)
         print(json.dumps(out, indent=2))
     else:
-        _print_human(args.device, probe, summary)
+        style = resolve_style(no_color_flag=args.no_color)
+        _print_human(args.device, probe, summary, style)
 
     if summary is not None and summary.overall_health_passed is False:
         return 3
