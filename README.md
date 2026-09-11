@@ -34,25 +34,7 @@ underlying detection problem is smartctl's, not the GUI's.
 
 ## What this does
 
-```
-$ sudo usbsmart-doctor /dev/sdb
-Device:        /dev/sdb
-Working -d:    smartctl -d usbjmicron -a /dev/sdb
-Types tried:   auto, sat, usbjmicron
-
-Model:         Seagate Backup Plus 4TB
-Serial:        NA1A2B3C
-Protocol:      ATA
-SMART support: available=True enabled=True
-Overall health: PASSED
-Temperature:   31C
-Power-on time: 8452 hours
-Power cycles:  310
-Reallocated sectors: 0
-Pending sectors:     0
-
-No warnings detected in the metrics this tool checks.
-```
+![usbsmart-doctor example output](docs/images/example-output.png)
 
 It automatically tries `auto` first, then walks a documented list of
 USB-bridge device types until one returns real SMART data, remembers what
