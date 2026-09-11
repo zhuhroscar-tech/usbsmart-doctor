@@ -1,9 +1,21 @@
 # usbsmart-doctor
 
+[![CI](https://github.com/zhuhroscar-tech/usbsmart-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/zhuhroscar-tech/usbsmart-doctor/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/zhuhroscar-tech/usbsmart-doctor?include_prereleases&label=release)](https://github.com/zhuhroscar-tech/usbsmart-doctor/releases)
+![Linux](https://img.shields.io/badge/platform-Linux-111111?logo=linux)
+
 Find the `smartctl` device type your USB drive's bridge chip actually needs,
 then print a clean, human-readable SMART health report — instead of the
 generic `smartctl -a /dev/sdX` failure ("Unable to detect device type") that
 so many external/USB hard drives and SSDs hit on Linux.
+
+## Simple explanation
+
+Figures out the right way to talk to your external USB hard drive or SSD so
+you can see its health report (temperature, wear, warning signs of
+failure) — something the standard smartctl tool often fails to do
+automatically on USB drives. Run one command and get a clear health
+summary instead of a cryptic "Unable to detect device type" error.
 
 ## The problem
 
