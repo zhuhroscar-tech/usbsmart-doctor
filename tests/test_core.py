@@ -8,6 +8,7 @@ from usbsmart_doctor.core import (
     CANDIDATE_TYPES,
     ProbeResult,
     _decode_nvme_critical_warning,
+    _is_permission_denied,
     _json_has_smart_data,
     get_usb_identity,
     load_cache,
@@ -367,3 +368,58 @@ def test_get_usb_identity_empty_serial_defaults_to_empty_string(monkeypatch):
 
     monkeypatch.setattr(core_mod.subprocess, "run", fake_run)
     assert get_usb_identity("/dev/sdz") == "0951:1666:"
+
+
+def test_is_permission_denied_true_on_smartctl_permission_message():
+    data = {
+        "smartctl": {
+            "messages": [{"string": "Smartctl open device: /dev/sdz failed: Permission denied"}]
+        }
+    }
+    assert _is_permission_denied(data) is True
+
+
+def test_is_permission_denied_false_on_unrelated_message():
+    data = {"smartctl": {"messages": [{"string": "Unable to detect device type"}]}}
+    assert _is_permission_denied(data) is False
+
+
+def test_is_permission_denied_false_on_non_dict():
+    assert _is_permission_denied(None) is False
+    assert _is_permission_denied([]) is False
+
+
+def test_probe_device_type_reports_permission_denied_not_bridge_mismatch(tmp_path):
+    """Regression test: before this fix, a device we simply can't read
+    (permission denied) was misreported as 'no smartctl device type
+    produced SMART data' -- the generic bridge-chip-incompatibility
+    message -- sending users down the wrong troubleshooting path instead
+    of telling them to fix permissions. This would have failed before the
+    _is_permission_denied() short-circuit was added to probe_device_type.
+    """
+
+    def runner(smartctl_bin, args, timeout=20):
+        stdout = json.dumps(
+            {
+                "smartctl": {
+                    "messages": [
+                        {"string": "Smartctl open device: /dev/sdz failed: Permission denied"}
+                    ]
+                }
+            }
+        )
+        return subprocess.CompletedProcess(args=[], returncode=1, stdout=stdout, stderr="")
+
+    result = probe_device_type(
+        "/dev/sdz",
+        smartctl_bin="smartctl",
+        cache_path=tmp_path / "cache.json",
+        use_cache=False,
+        runner=runner,
+    )
+    assert result.device_type is None
+    assert "permission denied" in result.error.lower()
+    assert "no smartctl device type produced smart data" not in result.error.lower()
+    # Only the first candidate should be tried -- permission denied is a
+    # terminal condition, not something a different -d TYPE can fix.
+    assert len(result.tried) == 1

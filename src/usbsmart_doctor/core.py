@@ -130,6 +130,29 @@ def _json_has_smart_data(data: dict) -> bool:
     return False
 
 
+def _is_permission_denied(data: dict) -> bool:
+    """Did smartctl fail to even open the device due to insufficient
+    permissions, rather than a bridge-chip/device-type mismatch?
+
+    smartctl reports this as a "Permission denied" message when the
+    invoking user lacks read access to the block device (the common case:
+    running as a non-root user without being in the right group, or a udev
+    rule that doesn't grant access to removable USB drives). This is a
+    fundamentally different problem than "no -d TYPE produced SMART data",
+    and misattributing it to the USB bridge chip sends users down the wrong
+    troubleshooting path (trying every -d TYPE) when the real fix is a
+    one-line permission/group change.
+    """
+    if not isinstance(data, dict):
+        return False
+    messages = data.get("smartctl", {}).get("messages", [])
+    for m in messages:
+        text = (m.get("string") or "").lower()
+        if "permission denied" in text:
+            return True
+    return False
+
+
 def load_cache(cache_path: Path = DEFAULT_CACHE_PATH) -> dict:
     try:
         return json.loads(cache_path.read_text())
@@ -212,6 +235,19 @@ def probe_device_type(
             data = json.loads(proc.stdout) if proc.stdout else {}
         except json.JSONDecodeError:
             data = {}
+        if _is_permission_denied(data):
+            return ProbeResult(
+                device_type=None,
+                tried=tried,
+                error=(
+                    f"smartctl could not open {device}: permission denied. "
+                    "This is not a USB bridge/device-type problem -- your "
+                    "user lacks read access to the block device. Re-run "
+                    "with 'sudo', or add your user to the 'disk' group "
+                    "(some distros use a udev rule instead) and log back "
+                    "in."
+                ),
+            )
         if _json_has_smart_data(data):
             if use_cache and identity:
                 cache[identity] = dtype
