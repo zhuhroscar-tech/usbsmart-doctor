@@ -9,6 +9,7 @@ from usbsmart_doctor.core import (
     ProbeResult,
     _decode_nvme_critical_warning,
     _json_has_smart_data,
+    get_usb_identity,
     load_cache,
     probe_device_type,
     save_cache,
@@ -203,3 +204,105 @@ def test_summarize_no_critical_warning_key_is_silent():
     probe = ProbeResult(device_type="sat", tried=["auto", "sat"], raw_json=SAMPLE_SAT_JSON)
     summary = summarize("/dev/sdz", probe)
     assert summary.warnings == []
+
+
+# --- get_usb_identity ---------------------------------------------------
+
+
+def test_get_usb_identity_none_when_udevadm_missing(monkeypatch):
+    import usbsmart_doctor.core as core_mod
+
+    monkeypatch.setattr(core_mod.shutil, "which", lambda name: None)
+    assert get_usb_identity("/dev/sdz") is None
+
+
+def test_get_usb_identity_parses_vendor_product_serial(monkeypatch):
+    import usbsmart_doctor.core as core_mod
+
+    monkeypatch.setattr(core_mod.shutil, "which", lambda name: "/usr/bin/udevadm")
+    sample = (
+        "ID_VENDOR_ID=0951\n"
+        "ID_MODEL_ID=1666\n"
+        "ID_SERIAL_SHORT=AB12CD34\n"
+    )
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 0, stdout=sample, stderr="")
+
+    monkeypatch.setattr(core_mod.subprocess, "run", fake_run)
+    assert get_usb_identity("/dev/sdz") == "0951:1666:AB12CD34"
+
+
+def test_get_usb_identity_falls_back_to_id_serial(monkeypatch):
+    import usbsmart_doctor.core as core_mod
+
+    monkeypatch.setattr(core_mod.shutil, "which", lambda name: "/usr/bin/udevadm")
+    sample = "ID_VENDOR_ID=0951\nID_MODEL_ID=1666\nID_SERIAL=full-serial-string\n"
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 0, stdout=sample, stderr="")
+
+    monkeypatch.setattr(core_mod.subprocess, "run", fake_run)
+    assert get_usb_identity("/dev/sdz") == "0951:1666:full-serial-string"
+
+
+def test_get_usb_identity_none_when_vendor_or_product_missing(monkeypatch):
+    import usbsmart_doctor.core as core_mod
+
+    monkeypatch.setattr(core_mod.shutil, "which", lambda name: "/usr/bin/udevadm")
+    sample = "ID_SERIAL_SHORT=AB12CD34\n"  # no vendor/product ids at all
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 0, stdout=sample, stderr="")
+
+    monkeypatch.setattr(core_mod.subprocess, "run", fake_run)
+    assert get_usb_identity("/dev/sdz") is None
+
+
+def test_get_usb_identity_none_on_nonzero_returncode(monkeypatch):
+    import usbsmart_doctor.core as core_mod
+
+    monkeypatch.setattr(core_mod.shutil, "which", lambda name: "/usr/bin/udevadm")
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="not found")
+
+    monkeypatch.setattr(core_mod.subprocess, "run", fake_run)
+    assert get_usb_identity("/dev/sdz") is None
+
+
+def test_get_usb_identity_none_on_oserror(monkeypatch):
+    import usbsmart_doctor.core as core_mod
+
+    monkeypatch.setattr(core_mod.shutil, "which", lambda name: "/usr/bin/udevadm")
+
+    def raising_run(cmd, **kwargs):
+        raise OSError("udevadm vanished")
+
+    monkeypatch.setattr(core_mod.subprocess, "run", raising_run)
+    assert get_usb_identity("/dev/sdz") is None
+
+
+def test_get_usb_identity_none_on_subprocess_error(monkeypatch):
+    import usbsmart_doctor.core as core_mod
+
+    monkeypatch.setattr(core_mod.shutil, "which", lambda name: "/usr/bin/udevadm")
+
+    def raising_run(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, 10)
+
+    monkeypatch.setattr(core_mod.subprocess, "run", raising_run)
+    assert get_usb_identity("/dev/sdz") is None
+
+
+def test_get_usb_identity_empty_serial_defaults_to_empty_string(monkeypatch):
+    import usbsmart_doctor.core as core_mod
+
+    monkeypatch.setattr(core_mod.shutil, "which", lambda name: "/usr/bin/udevadm")
+    sample = "ID_VENDOR_ID=0951\nID_MODEL_ID=1666\n"  # no serial at all
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 0, stdout=sample, stderr="")
+
+    monkeypatch.setattr(core_mod.subprocess, "run", fake_run)
+    assert get_usb_identity("/dev/sdz") == "0951:1666:"
