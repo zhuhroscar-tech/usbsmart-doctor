@@ -206,6 +206,67 @@ def test_summarize_no_critical_warning_key_is_silent():
     assert summary.warnings == []
 
 
+def test_summarize_flags_pending_sectors():
+    data = dict(SAMPLE_SAT_JSON)
+    data["ata_smart_attributes"] = {
+        "table": [
+            {"id": 5, "raw": {"value": 0}},
+            {"id": 197, "raw": {"value": 2}},
+        ]
+    }
+    probe = ProbeResult(device_type="sat", tried=["auto", "sat"], raw_json=data)
+    summary = summarize("/dev/sdz", probe)
+    assert summary.pending_sectors == 2
+    assert any("pending sector" in w for w in summary.warnings)
+
+
+def test_summarize_flags_nvme_wear_at_or_above_90_percent():
+    data = dict(SAMPLE_SAT_JSON)
+    data["nvme_smart_health_information_log"] = {
+        "percentage_used": 90,
+        "media_errors": 0,
+        "critical_warning": 0,
+    }
+    probe = ProbeResult(device_type="auto", tried=["auto"], raw_json=data)
+    summary = summarize("/dev/nvme0", probe)
+    assert summary.percentage_used == 90
+    assert any("wear at 90%" in w for w in summary.warnings)
+
+
+def test_summarize_silent_on_nvme_wear_below_90_percent():
+    data = dict(SAMPLE_SAT_JSON)
+    data["nvme_smart_health_information_log"] = {
+        "percentage_used": 89,
+        "media_errors": 0,
+        "critical_warning": 0,
+    }
+    probe = ProbeResult(device_type="auto", tried=["auto"], raw_json=data)
+    summary = summarize("/dev/nvme0", probe)
+    assert summary.warnings == []
+
+
+def test_summarize_flags_nvme_media_errors():
+    data = dict(SAMPLE_SAT_JSON)
+    data["nvme_smart_health_information_log"] = {
+        "percentage_used": 5,
+        "media_errors": 4,
+        "critical_warning": 0,
+    }
+    probe = ProbeResult(device_type="auto", tried=["auto"], raw_json=data)
+    summary = summarize("/dev/nvme0", probe)
+    assert summary.media_errors == 4
+    assert any("media error" in w for w in summary.warnings)
+
+
+def test_summarize_flags_failed_overall_smart_status():
+    data = dict(SAMPLE_SAT_JSON)
+    data["smart_status"] = {"passed": False}
+    probe = ProbeResult(device_type="sat", tried=["auto", "sat"], raw_json=data)
+    summary = summarize("/dev/sdz", probe)
+    assert summary.overall_health_passed is False
+    assert any("FAILED" in w for w in summary.warnings)
+
+
 # --- get_usb_identity ---------------------------------------------------
 
 
