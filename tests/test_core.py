@@ -7,9 +7,12 @@ import pytest
 from usbsmart_doctor.core import (
     CANDIDATE_TYPES,
     ProbeResult,
+    SmartctlNotFound,
     _decode_nvme_critical_warning,
     _is_permission_denied,
     _json_has_smart_data,
+    _run_smartctl,
+    find_smartctl,
     get_usb_identity,
     load_cache,
     probe_device_type,
@@ -64,11 +67,100 @@ def test_json_has_smart_data_true_for_smart_status():
     assert _json_has_smart_data({"smart_status": {"passed": True}})
 
 
+def test_json_has_smart_data_true_for_ata_smart_attributes_table():
+    assert _json_has_smart_data(
+        {"ata_smart_attributes": {"table": [{"id": 5, "name": "Reallocated_Sector_Ct"}]}}
+    )
+
+
+def test_json_has_smart_data_true_for_nvme_health_log():
+    assert _json_has_smart_data(
+        {"nvme_smart_health_information_log": {"percentage_used": 3}}
+    )
+
+
+def test_json_has_smart_data_false_for_non_dict():
+    assert not _json_has_smart_data(None)
+    assert not _json_has_smart_data([])
+
+
+def test_json_has_smart_data_false_for_device_open_failed_message():
+    assert not _json_has_smart_data(
+        {"smartctl": {"messages": [{"string": "Device open failed"}]}}
+    )
+
+
 def test_json_has_smart_data_false_for_empty():
     assert not _json_has_smart_data({})
     assert not _json_has_smart_data(
         {"smartctl": {"messages": [{"string": "Unable to detect device type"}]}}
     )
+
+
+def test_find_smartctl_returns_path_when_present(monkeypatch):
+    monkeypatch.setattr("usbsmart_doctor.core.shutil.which", lambda name: "/usr/sbin/smartctl")
+    assert find_smartctl() == "/usr/sbin/smartctl"
+
+
+def test_find_smartctl_raises_with_install_hints_when_missing(monkeypatch):
+    monkeypatch.setattr("usbsmart_doctor.core.shutil.which", lambda name: None)
+    with pytest.raises(SmartctlNotFound) as excinfo:
+        find_smartctl()
+    assert "smartmontools" in str(excinfo.value)
+
+
+def test_run_smartctl_invokes_real_subprocess_on_missing_binary():
+    # Exercises the actual subprocess.run() call path (not a fake runner):
+    # a nonexistent binary must raise FileNotFoundError, proving _run_smartctl
+    # does not swallow OS-level failures itself (callers handle it).
+    with pytest.raises(FileNotFoundError):
+        _run_smartctl("/nonexistent/definitely-not-a-real-smartctl-binary", ["-a"])
+
+
+def test_run_smartctl_invokes_real_subprocess_successfully():
+    # Uses a real, always-present binary (echo) to exercise the real
+    # subprocess.run() success path end-to-end, not a fake runner.
+    proc = _run_smartctl("echo", ["hello"])
+    assert proc.returncode == 0
+    assert "hello" in proc.stdout
+
+
+def test_probe_device_type_continues_past_runner_oserror(tmp_path, monkeypatch):
+    monkeypatch.setattr("usbsmart_doctor.core.get_usb_identity", lambda device: None)
+    calls = []
+
+    def flaky_runner(smartctl_bin, args, timeout=20):
+        calls.append(args)
+        if len(calls) == 1:
+            raise OSError("boom")
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(SAMPLE_SAT_JSON), stderr="")
+
+    result = probe_device_type(
+        "/dev/sdz",
+        smartctl_bin="smartctl",
+        candidates=["auto", "sat"],
+        cache_path=tmp_path / "cache.json",
+        use_cache=False,
+        runner=flaky_runner,
+    )
+    assert result.ok
+    assert len(calls) == 2
+
+
+def test_probe_device_type_handles_malformed_json_output(tmp_path):
+    def garbled_runner(smartctl_bin, args, timeout=20):
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="not-json{{{", stderr="")
+
+    result = probe_device_type(
+        "/dev/sdz",
+        smartctl_bin="smartctl",
+        candidates=["auto"],
+        cache_path=tmp_path / "cache.json",
+        use_cache=False,
+        runner=garbled_runner,
+    )
+    assert not result.ok
+    assert result.tried == ["auto"]
 
 
 def test_probe_device_type_finds_correct_type_after_trying_others(tmp_path, monkeypatch):
