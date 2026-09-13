@@ -223,6 +223,68 @@ def test_cache_round_trip(tmp_path):
     assert load_cache(cache_path) == {"a": "b"}
 
 
+def test_probe_device_type_explicit_single_type_ignores_stale_cache(monkeypatch, tmp_path):
+    """CLI's `--type TYPE` maps to candidates=[TYPE] (skip probing, use this
+    type directly). A cache entry for a *different* type -- e.g. left over
+    from a previous drive that shared the same USB vendor:product id, or a
+    bridge chip that responds to more than one -d TYPE -- must never be
+    silently substituted for the user's explicit choice. Regression test for
+    the bug where the cache was consulted regardless of candidate-list size:
+    a forced --type sat would come back with data read under the cached
+    usbprolific type instead, misattributing the health report."""
+    cache_path = tmp_path / "cache.json"
+    save_cache({"1234:5678:SERIAL": "usbprolific"}, cache_path)
+    monkeypatch.setattr(
+        "usbsmart_doctor.core.get_usb_identity", lambda device: "1234:5678:SERIAL"
+    )
+
+    def runner(smartctl_bin, args, timeout=20):
+        dtype = args[args.index("-d") + 1] if "-d" in args else "auto"
+        if dtype == "usbprolific":
+            stdout = json.dumps({"smart_status": {"passed": True}, "model_name": "WRONG-CACHED-TYPE"})
+        elif dtype == "sat":
+            stdout = json.dumps({"smart_status": {"passed": True}, "model_name": "USER-FORCED-TYPE"})
+        else:
+            stdout = json.dumps({"smartctl": {"messages": [{"string": "Unable to detect device type"}]}})
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+
+    result = probe_device_type(
+        "/dev/sdz",
+        smartctl_bin="smartctl",
+        candidates=["sat"],  # single candidate == the --type sat CLI override
+        cache_path=cache_path,
+        use_cache=True,
+        runner=runner,
+    )
+    assert result.ok
+    assert result.device_type == "sat"
+    assert result.tried == ["sat"]
+    assert result.raw_json["model_name"] == "USER-FORCED-TYPE"
+
+
+def test_probe_device_type_cache_still_reorders_multi_candidate_auto_probe(monkeypatch, tmp_path):
+    """Companion test: the normal multi-candidate auto-probe path must keep
+    using the cache to skip straight to the previously-learned type (this is
+    the cache's whole purpose) -- only the single-candidate forced-type path
+    changed behavior."""
+    cache_path = tmp_path / "cache.json"
+    save_cache({"1234:5678:SERIAL": "usbprolific"}, cache_path)
+    monkeypatch.setattr(
+        "usbsmart_doctor.core.get_usb_identity", lambda device: "1234:5678:SERIAL"
+    )
+    runner = fake_runner_factory("usbprolific", SAMPLE_SAT_JSON)
+    result = probe_device_type(
+        "/dev/sdz",
+        smartctl_bin="smartctl",
+        candidates=["auto", "sat", "usbjmicron", "usbprolific"],
+        cache_path=cache_path,
+        use_cache=True,
+        runner=runner,
+    )
+    assert result.ok
+    assert result.tried == ["usbprolific"]
+
+
 def test_summarize_flags_reallocated_sectors():
     data = dict(SAMPLE_SAT_JSON)
     data["ata_smart_attributes"] = {
