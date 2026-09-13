@@ -68,7 +68,7 @@ pip install --user usbsmart-doctor    # once published to PyPI (source install b
 or, from a GitHub Release, grab `usbsmart-doctor.pyz` (no pip/venv needed):
 
 ```bash
-curl -LO https://github.com/zhuhroscar-tech/usbsmart-doctor/releases/download/v0.1.0/usbsmart-doctor.pyz
+curl -LO https://github.com/zhuhroscar-tech/usbsmart-doctor/releases/latest/download/usbsmart-doctor.pyz
 python3 usbsmart-doctor.pyz --help
 ```
 
