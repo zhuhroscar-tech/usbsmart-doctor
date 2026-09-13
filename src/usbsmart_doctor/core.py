@@ -215,7 +215,15 @@ def probe_device_type(
 
     cache = load_cache(cache_path) if use_cache else {}
     identity = get_usb_identity(device) if use_cache else None
-    if identity and identity in cache:
+    # Only let the cache reorder/inject a type when the caller is exploring
+    # the full candidate list (the normal auto-probe path). When exactly one
+    # candidate was supplied -- the CLI's `--type TYPE` "skip probing and use
+    # this type directly" override -- a cache hit must never prepend a
+    # *different* cached type ahead of it: that would silently ignore the
+    # user's explicit choice (e.g. a stale/wrong cache entry from a prior
+    # drive sharing the same USB vendor:product id) and return health data
+    # read with the wrong device type instead of the one the user asked for.
+    if identity and identity in cache and len(candidates) > 1:
         cached_type = cache[identity]
         ordered = [cached_type] + [c for c in candidates if c != cached_type]
     else:
