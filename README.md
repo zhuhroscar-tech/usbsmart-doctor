@@ -1,141 +1,62 @@
 # usbsmart-doctor
 
-[![CI](https://github.com/zhuhroscar-tech/usbsmart-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/zhuhroscar-tech/usbsmart-doctor/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/zhuhroscar-tech/usbsmart-doctor?include_prereleases&label=release)](https://github.com/zhuhroscar-tech/usbsmart-doctor/releases)
-![Linux](https://img.shields.io/badge/platform-Linux-111111?logo=linux)
+[![English](https://img.shields.io/badge/English-555555?style=flat)](README.md) [![简体中文](https://img.shields.io/badge/简体中文-555555?style=flat)](README.zh-CN.md)
 
-Find the `smartctl` device type your USB drive's bridge chip actually needs,
-then print a clean, human-readable SMART health report — instead of the
-generic `smartctl -a /dev/sdX` failure ("Unable to detect device type") that
-so many external/USB hard drives and SSDs hit on Linux.
+Find a usable `smartctl` device type for a USB-connected drive, then summarize its SMART health data. This Linux CLI tries USB bridge types when automatic detection fails and can remember a working type for later checks.
 
-## Simple explanation
+![Example SMART report](docs/images/example-output.png)
 
-Figures out the right way to talk to your external USB hard drive or SSD so
-you can see its health report (temperature, wear, warning signs of
-failure) — something the standard smartctl tool often fails to do
-automatically on USB drives. Run one command and get a clear health
-summary instead of a cryptic "Unable to detect device type" error.
+## Requirements and installation
 
-## The problem
-
-`smartctl` (from smartmontools) can read SMART health data from almost any
-drive — but only if it knows which USB-to-SATA/USB-to-NVMe bridge chip sits
-between the drive and your USB port. Autodetection (`-d auto`) frequently
-fails on external enclosures, and the fix is to manually guess one of a dozen
-`-d TYPE` values (`usbjmicron`, `usbprolific`, `sat`, `sntjmicron`, ...) from
-the `smartctl(8)` man page — a well-documented, recurring source of confusion
-for people trying to check the health of an external drive
-(see e.g. [Unix & Linux SE], [r/linuxquestions], [r/linux4noobs] threads on
-exactly this).
-
-Existing GUI tools like GSmartControl still hit the same wall because the
-underlying detection problem is smartctl's, not the GUI's.
-
-## What this does
-
-![usbsmart-doctor example output](docs/images/example-output.png)
-
-It automatically tries `auto` first, then walks a documented list of
-USB-bridge device types until one returns real SMART data, remembers what
-worked for that exact drive (by USB vendor:product:serial) so future runs are
-instant, and translates the raw attributes into a summary with plain-English
-warnings (reallocated/pending sectors, NVMe wear, failed self-assessment).
-
-**Read-only. It never writes to a device, never runs a self-test, and never
-requires network access.** It only shells out to `smartctl` with `-a`/`-i`
-style read commands.
-
-## Install
-
-Requires Python 3.9+ and `smartmontools` (provides `smartctl`):
+Requires Linux, Python 3.9+, and `smartmontools` (`smartctl` on PATH). SMART access often requires elevated privileges. Python runtime code uses the standard library only.
 
 ```bash
-# Debian/Ubuntu
+# Debian/Ubuntu; use your distro's package manager elsewhere
 sudo apt install smartmontools
-# Arch
-sudo pacman -S smartmontools
-# Fedora
-sudo dnf install smartmontools
-```
-
-Then either:
-
-```bash
-pip install --user usbsmart-doctor    # once published to PyPI (source install below always works)
-```
-
-or, from a GitHub Release, grab `usbsmart-doctor.pyz` (no pip/venv needed):
-
-```bash
-curl -LO https://github.com/zhuhroscar-tech/usbsmart-doctor/releases/latest/download/usbsmart-doctor.pyz
-python3 usbsmart-doctor.pyz --help
-```
-
-Or from source:
-
-```bash
 git clone https://github.com/zhuhroscar-tech/usbsmart-doctor.git
 cd usbsmart-doctor
-pip install --user .
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+usbsmart-doctor --help
 ```
+
+A standalone `.pyz` is also available from [GitHub Releases](https://github.com/zhuhroscar-tech/usbsmart-doctor/releases). Check the release's available assets before downloading; a source install does not depend on PyPI publication.
 
 ## Usage
 
+Replace `/dev/sdb` with the correct drive. Do not guess the device path.
+
 ```bash
-usbsmart-doctor /dev/sdb            # human-readable report (needs root/sudo for SMART reads on most systems)
-usbsmart-doctor /dev/sdb --json     # machine-readable JSON
-usbsmart-doctor /dev/sdb --type sat # skip probing, force a known -d TYPE
-usbsmart-doctor /dev/sdb --no-cache # ignore/skip the learned-type cache
+usbsmart-doctor /dev/sdb
+usbsmart-doctor /dev/sdb --json
+usbsmart-doctor /dev/sdb --type sat
+usbsmart-doctor /dev/sdb --no-cache
 ```
 
-Exit codes: `0` healthy, `1` no working device type found, `2` smartctl
-missing, `3` SMART overall self-assessment failed, `4` other warnings
-present.
+If device permissions require root, use the installed executable explicitly, for example `sudo .venv/bin/usbsmart-doctor /dev/sdb` from the repository directory.
 
-## Uninstall
+The report includes available temperature, sector, wear, and self-assessment information. `--type` bypasses the normal candidate list; `--no-cache` disables cache reads and writes.
 
-```bash
-pip uninstall usbsmart-doctor
-rm -rf ~/.cache/usbsmart-doctor   # clears the learned device-type cache
-```
+| Exit code | Meaning |
+| --- | --- |
+| `0` | No checked warning reported; not a guarantee of drive health |
+| `1` | No working device type found |
+| `2` | `smartctl` missing |
+| `3` | SMART overall self-assessment failed |
+| `4` | Other warnings reported |
 
-## Privacy & permissions
+## Safety and privacy
 
-- No network access, no telemetry, no data leaves your machine.
-- Reading SMART data typically requires root (raw device access) — run with
-  `sudo` if you get a permission error.
-- The only persistent state is `~/.cache/usbsmart-doctor/known_bridges.json`,
-  a small cache mapping USB vendor:product:serial → the smartctl device type
-  that worked, so repeat checks on the same drive are instant. Delete it any
-  time; it is fully optional (`--no-cache`).
+The tool issues read commands only: it does not write to the drive or launch self-tests. It makes no network requests. Unsupported bridges and missing SMART fields can still prevent a useful diagnosis; keep backups regardless of the report.
 
-## Distro / architecture support
+The optional cache is `~/.cache/usbsmart-doctor/known_bridges.json`, keyed by USB identity when available. Reports can include drive serial numbers; redact them before sharing. Delete the cache to forget learned types.
 
-Pure Python (stdlib only) — works on any Linux distribution with Python 3.9+
-and `smartmontools` installed, on any CPU architecture. Tested in CI on
-Ubuntu (`ubuntu-latest` GitHub Actions runners), Python 3.9 and 3.12.
-
-## Reproducible build & test
+## Development
 
 ```bash
-git clone https://github.com/zhuhroscar-tech/usbsmart-doctor.git
-cd usbsmart-doctor
-python3 -m venv .venv && . .venv/bin/activate
-pip install -e . pytest
+pip install -e ".[dev]"
 pytest -v
-python -m build          # produces dist/*.whl and dist/*.tar.gz
-python -m zipapp build/pyz-deps -m "usbsmart_doctor.cli:main" -o dist/usbsmart-doctor.pyz
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same steps on real Ubuntu Linux
-GitHub Actions runners for every push/PR, plus a smoke test of the installed
-console script and the standalone `.pyz`.
-
-## License
-
-MIT — see [LICENSE](LICENSE).
-
-[Unix & Linux SE]: https://unix.stackexchange.com
-[r/linuxquestions]: https://www.reddit.com/r/linuxquestions/
-[r/linux4noobs]: https://www.reddit.com/r/linux4noobs/
+Tests exercise parsing and mocked probes; passing tests do not establish compatibility with every physical enclosure. [MIT license](LICENSE).
