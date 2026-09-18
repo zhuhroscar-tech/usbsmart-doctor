@@ -293,7 +293,7 @@ _NVME_CRITICAL_WARNING_BITS = {
     2: "NVMe subsystem reliability is degraded (excessive media/internal errors)",
     3: "NVMe media has been placed in read-only mode",
     4: "NVMe volatile memory backup device has failed",
-    5: "NVMe namespace(s) may be inconsistent with previously reported capacity",
+    5: "NVMe Persistent Memory Region (PMR) has become read-only or unreliable",
 }
 
 

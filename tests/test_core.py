@@ -341,6 +341,20 @@ def test_decode_nvme_critical_warning_unrecognized_bit_still_surfaced():
     assert "unrecognized bit" in warnings[0]
 
 
+def test_decode_nvme_critical_warning_bit5_is_pmr_read_only():
+    # NVMe Base Specification (SMART/Health Information Log, byte 0) and
+    # libnvme's nvme_smart_crit enum (NVME_SMART_CRIT_PMR_RO /
+    # NVME_SMART_CW_PMRRO_SHIFT) both define bit 5 as: "the Persistent
+    # Memory Region has become read-only or unreliable." It is NOT about
+    # namespace capacity consistency -- that text describes a different,
+    # unrelated condition and would mislead a user reading a real NVMe
+    # drive's critical_warning report.
+    warnings = _decode_nvme_critical_warning(1 << 5)
+    assert len(warnings) == 1
+    assert "persistent memory region" in warnings[0].lower()
+    assert "read-only" in warnings[0].lower() or "unreliable" in warnings[0].lower()
+
+
 def test_summarize_flags_nvme_critical_warning():
     data = dict(SAMPLE_SAT_JSON)
     data["nvme_smart_health_information_log"] = {
