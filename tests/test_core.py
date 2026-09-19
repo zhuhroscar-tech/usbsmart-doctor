@@ -557,6 +557,32 @@ def test_is_permission_denied_false_on_non_dict():
     assert _is_permission_denied([]) is False
 
 
+def test_json_has_smart_data_does_not_crash_on_null_ata_smart_attributes():
+    # Regression test: smartctl's own JSON schema documents
+    # ata_smart_attributes as optional, and real-world probe paths (e.g. a
+    # SCSI/USB-passthrough device with no ATA attribute table, or a device
+    # type accepted but the attribute-table sub-read failing) can serialize
+    # it as an explicit JSON `null` rather than omitting the key. Before
+    # the `or {}` fix, `data.get("ata_smart_attributes", {}).get("table")`
+    # skipped the {} default (the key IS present, just null) and crashed
+    # with AttributeError: 'NoneType' object has no attribute 'get'.
+    data = {"device": {"protocol": "SCSI"}, "ata_smart_attributes": None, "smart_status": None}
+    assert _json_has_smart_data(data) is False
+
+
+def test_json_has_smart_data_does_not_crash_on_null_smartctl_key():
+    # Same class of bug via the "smartctl" key's "messages" sub-read.
+    data = {"smartctl": None, "smart_status": None}
+    assert _json_has_smart_data(data) is False
+
+
+def test_is_permission_denied_does_not_crash_on_null_smartctl_key():
+    # Same class of bug: a present-but-null "smartctl" key must not crash
+    # the chained .get("messages") call.
+    data = {"smartctl": None}
+    assert _is_permission_denied(data) is False
+
+
 def test_probe_device_type_reports_permission_denied_not_bridge_mismatch(tmp_path):
     """Regression test: before this fix, a device we simply can't read
     (permission denied) was misreported as 'no smartctl device type

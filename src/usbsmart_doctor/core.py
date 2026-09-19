@@ -115,14 +115,25 @@ def _json_has_smart_data(data: dict) -> bool:
         return False
     if data.get("smart_status") is not None:
         return True
-    if data.get("ata_smart_attributes", {}).get("table"):
+    # smartctl's own JSON schema documents several object-valued keys
+    # (ata_smart_attributes, smartctl, nvme_smart_health_information_log,
+    # ...) as *optional*, and in practice some smartctl builds/probe paths
+    # serialize an unpopulated optional object as an explicit JSON `null`
+    # rather than omitting the key entirely (e.g. when a device type is
+    # accepted but the attribute-table sub-command subsequently fails, or
+    # for SCSI/USB-passthrough devices with no ATA attribute table at all).
+    # `dict.get(key, {})` only supplies the {} default when the key is
+    # *absent* -- a present-but-null value passes straight through and the
+    # chained `.get("table")` call then raises AttributeError on it. `or {}`
+    # normalizes both "absent" and "present but null" to the same safe {}.
+    if (data.get("ata_smart_attributes") or {}).get("table"):
         return True
     if data.get("nvme_smart_health_information_log"):
         return True
     # smartctl sets smartctl.exit_status bit 0x02 when the device could not
     # be opened at all -- never treat that as success even if some
     # boilerplate JSON keys exist.
-    messages = data.get("smartctl", {}).get("messages", [])
+    messages = (data.get("smartctl") or {}).get("messages", [])
     for m in messages:
         text = (m.get("string") or "").lower()
         if "unable to detect device type" in text or "device open failed" in text:
@@ -145,7 +156,11 @@ def _is_permission_denied(data: dict) -> bool:
     """
     if not isinstance(data, dict):
         return False
-    messages = data.get("smartctl", {}).get("messages", [])
+    # `smartctl` is documented as an optional object key and some probe
+    # paths serialize it as JSON `null` rather than omitting it (see
+    # _json_has_smart_data's comment above) -- `or {}` avoids an
+    # AttributeError on the chained `.get("messages")` call in that case.
+    messages = (data.get("smartctl") or {}).get("messages", [])
     for m in messages:
         text = (m.get("string") or "").lower()
         if "permission denied" in text:
