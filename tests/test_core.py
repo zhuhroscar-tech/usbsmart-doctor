@@ -583,6 +583,29 @@ def test_is_permission_denied_does_not_crash_on_null_smartctl_key():
     assert _is_permission_denied(data) is False
 
 
+def test_summarize_does_not_crash_on_null_ata_smart_attributes_table():
+    # Regression test: smartctl's own JSON schema documents
+    # ata_smart_attributes.table as an optional sub-key, and real-world probe
+    # paths (device type accepted, but the attribute-table sub-read itself
+    # failing; some SCSI/USB-passthrough responses) can serialize it as an
+    # explicit JSON `null` rather than omitting it -- the exact same failure
+    # shape already fixed in _json_has_smart_data() and _is_permission_denied()
+    # for their own ata_smart_attributes/smartctl reads, but missed here.
+    # Before the fix, `_get(data, "ata_smart_attributes", "table", default=[])`
+    # only supplies the [] default when the "table" key is *absent*; a
+    # present-but-null value passes straight through, and the summarize()
+    # `for attr in ...:` loop then crashes with
+    # "TypeError: 'NoneType' object is not iterable" instead of reporting a
+    # clean (if attribute-less) health summary.
+    data = dict(SAMPLE_SAT_JSON)
+    data["ata_smart_attributes"] = {"table": None}
+    probe = ProbeResult(device_type="sat", tried=["auto", "sat"], raw_json=data)
+    summary = summarize("/dev/sdz", probe)
+    assert summary.reallocated_sectors is None
+    assert summary.pending_sectors is None
+    assert summary.warnings == []
+
+
 def test_probe_device_type_reports_permission_denied_not_bridge_mismatch(tmp_path):
     """Regression test: before this fix, a device we simply can't read
     (permission denied) was misreported as 'no smartctl device type

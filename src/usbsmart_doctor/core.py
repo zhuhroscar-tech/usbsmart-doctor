@@ -353,7 +353,19 @@ def summarize(device: str, probe: ProbeResult) -> HealthSummary:
 
     reallocated = None
     pending = None
-    for attr in _get(data, "ata_smart_attributes", "table", default=[]):
+    # `_get(..., default=[])` only substitutes the default when the "table"
+    # key is *absent* -- smartctl's own JSON schema documents it as an
+    # optional sub-key, and real-world probe paths (device type accepted but
+    # the attribute-table sub-read itself failing, or certain SCSI/USB-
+    # passthrough responses) can serialize it as an explicit JSON `null`
+    # rather than omitting it. That present-but-null value passed straight
+    # through here and crashed the loop below with "TypeError: 'NoneType'
+    # object is not iterable" -- the same failure shape already guarded
+    # against for the sibling ata_smart_attributes/smartctl reads in
+    # _json_has_smart_data() and _is_permission_denied() via `or {}`, but
+    # missed at this call site. `or []` normalizes both "absent" and
+    # "present but null" to the same safe empty iterable.
+    for attr in _get(data, "ata_smart_attributes", "table", default=[]) or []:
         if attr.get("id") == 5:
             reallocated = attr.get("raw", {}).get("value")
         elif attr.get("id") == 197:
