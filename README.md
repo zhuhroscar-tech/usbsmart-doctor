@@ -21,7 +21,7 @@ pip install -e .
 usbsmart-doctor --help
 ```
 
-A standalone `.pyz` is also available from [GitHub Releases](https://github.com/zhuhroscar-tech/usbsmart-doctor/releases). Check the release's available assets before downloading; a source install does not depend on PyPI publication.
+A standalone `.pyz` is also available from [GitHub Releases](https://github.com/zhuhroscar-tech/usbsmart-doctor/releases). Check the release's available assets before downloading; a source install does not depend on PyPI publication. See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Usage
 
@@ -59,4 +59,4 @@ pip install -e ".[dev]"
 pytest -v
 ```
 
-Tests exercise parsing and mocked probes; passing tests do not establish compatibility with every physical enclosure. [MIT license](LICENSE).
+Tests exercise parsing and mocked probes; passing tests do not establish compatibility with every physical enclosure. Release notes live in [CHANGELOG.md](CHANGELOG.md). [MIT license](LICENSE).

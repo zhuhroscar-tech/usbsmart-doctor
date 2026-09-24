@@ -21,7 +21,7 @@ pip install -e .
 usbsmart-doctor --help
 ```
 
-[GitHub Releases](https://github.com/zhuhroscar-tech/usbsmart-doctor/releases) 也提供独立 `.pyz`。下载前请确认对应 release 的附件；从源码安装不依赖 PyPI 发布状态。
+[GitHub Releases](https://github.com/zhuhroscar-tech/usbsmart-doctor/releases) 也提供独立 `.pyz`。下载前请确认对应 release 的附件；从源码安装不依赖 PyPI 发布状态。发布历史见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 使用方法
 
@@ -59,4 +59,4 @@ pip install -e ".[dev]"
 pytest -v
 ```
 
-测试覆盖解析及模拟探测，不代表所有实体硬盘盒都已验证。[MIT 许可证](LICENSE)。
+测试覆盖解析及模拟探测，不代表所有实体硬盘盒都已验证。发布说明见 [CHANGELOG.md](CHANGELOG.md)。[MIT 许可证](LICENSE)。
