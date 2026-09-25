@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "usbsmart-doctor"
-version = "0.2.10"
+version = "0.2.11"
 description = "Finds the smartctl device type your USB drive's bridge chip needs and prints a clean SMART health report"
 readme = "README.md"
 license = "MIT"
@@ -21,6 +21,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/zhuhroscar-tech/usbsmart-doctor"
+Changelog = "https://github.com/zhuhroscar-tech/usbsmart-doctor/blob/main/CHANGELOG.md"
 
 [project.scripts]
 usbsmart-doctor = "usbsmart_doctor.cli:main"

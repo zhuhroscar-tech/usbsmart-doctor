@@ -41,9 +41,16 @@ def test_changelog_contains_current_version():
     assert f"## v{match.group(1)}" in changelog
 
 
+def test_project_metadata_links_changelog():
+    pyproject = _read("pyproject.toml")
+    assert "Changelog" in pyproject
+    assert "CHANGELOG.md" in pyproject
+
+
 def test_ci_runs_tests_and_builds_release_artifacts():
     ci = _read(".github/workflows/ci.yml")
 
+    assert 'tags: ["v*"]' in ci
     assert "pytest" in ci
     assert "python -m build" in ci
     assert "usbsmart-doctor.pyz" in ci

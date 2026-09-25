@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.11 - 2026-09-25
+
+- Run CI explicitly on `v*` release tags so release validation exercises the same tests, package build, standalone `.pyz` smoke, and checksum artifact contract as main-branch pushes.
+- Add the changelog project metadata URL and repository-contract coverage for release-tag CI and changelog metadata.
+
 ## v0.2.10 - 2026-09-24
 
 - Add release-history documentation and repository-contract coverage so future releases keep changelog, README, CI, CodeQL, and downloadable artifact expectations in sync.
